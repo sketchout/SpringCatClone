@@ -8,13 +8,14 @@
 #ifndef __SpringCat_Common_ThreadPool__
 #define __SpringCat_Common_ThreadPool__
 
+#include <SpringCat/Common/SmallObject.h>
 #include <BaseCat/System.h>
 
 namespace SpringCat
 {
     namespace Common
     {
-        class ThreadPool : private BaseCat::System::TL::NonCopyable
+        class ThreadPool : public SmallObject<ThreadPool>
         {
         private:
             BaseCat::System::ThreadPool::Handle handle_;
@@ -57,52 +58,6 @@ namespace SpringCat
             BaseCat::System::ThreadPool::Handle GetHandle(void) const
             {
                 return handle_;
-            }
-
-        public:
-            static void *operator new(size_t size)
-            {
-                if (size == 0)
-                {
-                    size = 1;
-                }
-
-                void *result = NULL;
-
-#pragma warning(disable:4127)
-                while (true)
-#pragma warning(default:4127)
-                {
-                    result = BaseCat::System::MPHeap::Alloc(NULL, size);
-                    if (result != NULL)
-                    {
-                        break;
-                    }
-
-                    std::new_handler newHandler = std::set_new_handler(0);
-                    std::set_new_handler(newHandler);
-
-                    if (newHandler != NULL)
-                    {
-                        (*newHandler)();
-                    }
-                    else
-                    {
-                        throw std::bad_alloc();
-                    }
-                }
-
-                return result;
-            }
-            static void operator delete(void *p) throw()
-            {
-                if (p == NULL)
-                {
-                    return;
-                }
-
-                BaseCat::System::MPHeap::Free(NULL, p);
-                p = NULL;
             }
         };
     }
