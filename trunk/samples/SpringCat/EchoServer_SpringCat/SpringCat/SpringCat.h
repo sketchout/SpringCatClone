@@ -9,6 +9,7 @@
 #define __SpringCat_SpringCat__
 
 // Common
+#include "Common/SmallObject.h"
 #include "Common/Filter.h"
 #include "Common/FilterChain.h"
 #include "Common/IOHandler.h"
