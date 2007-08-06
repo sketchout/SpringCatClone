@@ -250,6 +250,10 @@
 					>
 				</File>
 				<File
+					RelativePath=".\SpringCat\Common\SmallObject.h"
+					>
+				</File>
+				<File
 					RelativePath=".\SpringCat\Common\ThreadPool.h"
 					>
 				</File>

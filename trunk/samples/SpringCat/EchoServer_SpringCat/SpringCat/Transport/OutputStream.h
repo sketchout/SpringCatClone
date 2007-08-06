@@ -8,6 +8,7 @@
 #ifndef __SpringCat_Transport_OutputStream__
 #define __SpringCat_Transport_OutputStream__
 
+#include <SpringCat/Common/SmallObject.h>
 #include <BaseCat/System.h>
 
 namespace SpringCat
@@ -15,7 +16,7 @@ namespace SpringCat
     namespace Transport
     {
         template<typename LinkT = Link>
-        class OutputStream : private BaseCat::System::TL::NonCopyable
+        class OutputStream : public Common::SmallObject<OutputStream<LinkT> >
         {
         private:
             LinkT *link_;
