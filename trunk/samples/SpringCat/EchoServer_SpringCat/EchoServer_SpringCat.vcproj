@@ -238,6 +238,10 @@
 				Name="Common"
 				>
 				<File
+					RelativePath=".\SpringCat\Common\Config.h"
+					>
+				</File>
+				<File
 					RelativePath=".\SpringCat\Common\Filter.h"
 					>
 				</File>
