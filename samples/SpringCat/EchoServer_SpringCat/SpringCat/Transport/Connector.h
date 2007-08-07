@@ -27,7 +27,8 @@ namespace SpringCat
             typename IOHandlerT = Common::IIOHandler<LinkT>,
             typename LinkFactoryT = DefaultLinkFactory<LinkT>
         >
-        class Connector : public Common::SmallObject<Connector<LinkT, IOHandlerT, LinkFactoryT> >
+        class Connector : public Common::SmallObject<
+            Connector<LinkT, IOHandlerT, LinkFactoryT> >
         {
         private:
             BaseCat::Network::Connector::Handle handle_;
