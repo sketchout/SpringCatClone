@@ -1,8 +1,3 @@
-//
-// ExecutorFilter 사용 시 Link의 동기화 문제는 없는지 확인해볼 것
-// ExecutorFilter: Link 이벤트 순서 보장 문제
-//
-
 #include <SpringCat/SpringCat.h>
 #include <iostream>
 
@@ -32,9 +27,9 @@ public:
         textLineFilter_(new Filter::TextLineFilter),
         acceptor_(new Acceptor(threadPool_.get(), chain_.get()))
     {
-        chain_->Add(autoRecvFilter_->GetName(), autoRecvFilter_.get());
-        chain_->Add(executorFilter_->GetName(), executorFilter_.get());
-        chain_->Add(textLineFilter_->GetName(), textLineFilter_.get());
+        chain_->Add(autoRecvFilter_.get());
+        chain_->Add(executorFilter_.get());
+        chain_->Add(textLineFilter_.get());
 
         acceptor_->SetDefaultPort(9999);
         acceptor_->SetHandler(this);
@@ -60,6 +55,15 @@ public:
 
         Transport::OutputStream<Transport::Link> writeStream(link);
         writeStream.Attach(readStream.Detach());
+        writeStream.Flush();
+
+        for (int i = 0; i != 20; ++i)
+        {
+            char buffer[100];
+            sprintf_s(buffer, 100, "test msg: %d\r\n", i + 1);
+            writeStream.Write(buffer, strlen(buffer) + 1);
+            writeStream.Flush();
+        }
     }
 };
 

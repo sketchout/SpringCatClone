@@ -46,16 +46,17 @@ namespace SpringCat
                 handle_ = NULL;
             }
 
-            bool Add(const char *name, IFilter *filter)
+            bool Add(IFilter *filter)
             {
-                if (Find(name) != NULL)
+                if (Find(filter->GetName()) != NULL)
                 {
                     return false;
                 }
 
-                filters_.push_back(std::make_pair(name, filter));
+                filters_.push_back(std::make_pair(filter->GetName(), filter));
 
-                return BaseCat::Network::FilterChain::Add(GetHandle(), name, filter->GetHandle());
+                return BaseCat::Network::FilterChain::Add(GetHandle(),
+                    filter->GetName(), filter->GetHandle());
             }
             bool Remove(const char *name)
             {
