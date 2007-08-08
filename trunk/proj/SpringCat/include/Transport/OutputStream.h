@@ -71,8 +71,11 @@ namespace SpringCat
 
             void Flush(void)
             {
-                link_->Send(GetRawPtr(), GetLength());
-                Clear();
+                if (GetLength() > 0)
+                {
+                    link_->Send(GetRawPtr(), GetLength());
+                    Clear();
+                }
             }
 
             size_t Write(const void *p, size_t size)

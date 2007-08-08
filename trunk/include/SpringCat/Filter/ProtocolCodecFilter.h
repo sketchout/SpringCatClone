@@ -27,15 +27,17 @@ namespace SpringCat
         class ProtocolCodecFilter : public Common::IFilter
         {
         private:
+            static const char * const FILTER_NAME;
+
+        private:
             struct Context
             {
-                static const char * const filterName;
-                static const char * const contextName;
+                static const char * const CONTEXT_NAME;
             };
 
         public:
             ProtocolCodecFilter(void)
-                : Common::IFilter(Context::filterName)
+                : Common::IFilter(FILTER_NAME)
             {}
             virtual ~ProtocolCodecFilter(void)
             {}
@@ -65,8 +67,8 @@ namespace SpringCat
             }
         };
 
-        const char * const ProtocolCodecFilter::Context::filterName = "ProtocolCodecFilter";
-        const char * const ProtocolCodecFilter::Context::contextName = "ProtocolCodecFilterContext";
+        const char * const ProtocolCodecFilter::FILTER_NAME = "SpringCat::Filter::ProtocolCodecFilter";
+        const char * const ProtocolCodecFilter::Context::CONTEXT_NAME = "SpringCat::Filter::ProtocolCodecFilter::Context";
     }
 }
 

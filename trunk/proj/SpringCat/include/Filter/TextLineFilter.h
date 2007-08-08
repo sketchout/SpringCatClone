@@ -19,19 +19,36 @@
 #define __SpringCat_Filter_TextLineFilter__
 
 #include <SpringCat/Common/SmallObject.h>
+#include <SPringCat/Common/Exceptions.h>
 #include <SpringCat/Common/Filter.h>
 
 namespace SpringCat
 {
     namespace Filter
     {
+        struct LineDelimiter
+        {
+            static const char * const AUTO;
+            static const char * const WINDOWS;
+            static const char * const UNIX;
+            static const char * const MAC;
+        };
+
+        const char * const LineDelimiter::AUTO = "";
+        const char * const LineDelimiter::WINDOWS = "\r\n";
+        const char * const LineDelimiter::UNIX = "\n";
+        const char * const LineDelimiter::MAC = "\r";
+
+        //template<typename CharT = char>
         class TextLineFilter : public Common::IFilter
         {
         private:
+            static const char * const FILTER_NAME;
+
+        private:
             struct Context : public Common::SmallObject<Context>
             {
-                static const char * const filterName;
-                static const char * const contextName;
+                static const char * const CONTEXT_NAME;
 
                 BaseCat::System::Stream::Handle read_;
 
@@ -45,10 +62,22 @@ namespace SpringCat
                 }
             };
 
+        private:
+            const char * const delimiter_;
+
         public:
             TextLineFilter(void)
-                : Common::IFilter(Context::filterName)
+                : Common::IFilter(FILTER_NAME),
+                delimiter_(LineDelimiter::AUTO)
             {}
+            TextLineFilter(const char * const delimiter)
+                : Common::IFilter(FILTER_NAME), delimiter_(delimiter)
+            {
+                if (delimiter_ == NULL)
+                {
+                    throw Common::NullPointerException("delimiter");
+                }
+            }
             virtual ~TextLineFilter(void)
             {}
 
@@ -56,23 +85,27 @@ namespace SpringCat
             virtual void OnOpened(BaseCat::Network::Filter::Handle next,
                 BaseCat::Network::Link::Handle link)
             {
+                using namespace BaseCat;
+
                 Context *context = new Context;
-                if (BaseCat::Network::Link::AddAttribute(link,
-                    Context::contextName, context) == false)
+                if (Network::Link::AddAttribute(link,
+                    Context::CONTEXT_NAME, context) == false)
                 {
                     // error.
                     delete context;
                     context = NULL;
                 }
 
-                BaseCat::Network::Filter::DoOnLinkOpened(next, link);
+                Network::Filter::DoOnLinkOpened(next, link);
             }
             virtual void OnClosed(BaseCat::Network::Filter::Handle next,
                 BaseCat::Network::Link::Handle link)
             {
+                using namespace BaseCat;
+
                 Context *context = static_cast<Context *>(
-                    BaseCat::Network::Link::GetAttribute(link, Context::contextName));
-                BaseCat::Network::Link::RemoveAttribute(link, Context::contextName);
+                    Network::Link::GetAttribute(link, Context::CONTEXT_NAME));
+                Network::Link::RemoveAttribute(link, Context::CONTEXT_NAME);
                 delete context;
                 context = NULL;
 
@@ -82,38 +115,44 @@ namespace SpringCat
                 BaseCat::Network::Link::Handle link,
                 BaseCat::System::SmartHeap::Block buffer, size_t size)
             {
-                BaseCat::Network::Filter::DoOnSend(next, link, buffer, size);
+                using namespace BaseCat;
+
+                // TODO: check line ending
+
+                Network::Filter::DoOnSend(next, link, buffer, size);
             }
             virtual void OnReceived(BaseCat::Network::Filter::Handle next,
                 BaseCat::Network::Link::Handle link,
                 BaseCat::System::SmartHeap::Block buffer, size_t size)
             {
-                Context *context = static_cast<Context *>(
-                    BaseCat::Network::Link::GetAttribute(link, Context::contextName));
+                using namespace BaseCat;
 
-                BaseCat::System::Stream::Write(context->read_, buffer, size);
-                BaseCat::System::SmartHeap::Free(buffer);
+                Context *context = static_cast<Context *>(
+                    Network::Link::GetAttribute(link, Context::CONTEXT_NAME));
+
+                System::Stream::Write(context->read_, buffer, size);
+                System::SmartHeap::Free(buffer);
                 buffer = NULL;
 
-                typedef BaseCat::System::TL::vector<std::pair<BaseCat::System::SmartHeap::Block, size_t> > Lines;
+                typedef System::TL::vector<std::pair<System::SmartHeap::Block, size_t> > Lines;
                 Lines lines;
 
                 bool retry = false;
                 do
                 {
                     retry = false;
-                    for (size_t index = 0;
-                        index != BaseCat::System::Stream::GetLength(context->read_); ++index)
+                    size_t streamLength = System::Stream::GetLength(context->read_);
+                    for (size_t index = 0; index != streamLength; ++index)
                     {
                         const char *text = reinterpret_cast<const char *>(
-                            BaseCat::System::Stream::GetRawPtr(context->read_));
+                            System::Stream::GetRawPtr(context->read_));
 
                         if (*(text + index) == '\n')
                         {
                             size_t len = index + 1;
-                            BaseCat::System::SmartHeap::Block line = BaseCat::System::SmartHeap::Alloc(len + 1);
+                            System::SmartHeap::Block line = System::SmartHeap::Alloc(len + 1);
                             memset(line, 0, len + 1);
-                            BaseCat::System::Stream::Read(context->read_, line, len);
+                            System::Stream::Read(context->read_, line, len);
                             lines.push_back(std::make_pair(line, len + 1));
                             retry = true;
                             break;
@@ -124,13 +163,13 @@ namespace SpringCat
 
                 for (Lines::iterator it = lines.begin(); it != lines.end(); ++it)
                 {
-                    BaseCat::Network::Filter::DoOnReceived(next, link, (*it).first, (*it).second);
+                    Network::Filter::DoOnReceived(next, link, (*it).first, (*it).second);
                 }
             }
         };
 
-        const char * const TextLineFilter::Context::filterName = "TextLineFilter";
-        const char * const TextLineFilter::Context::contextName = "TextLineFilterContext";
+        const char * const TextLineFilter::FILTER_NAME = "SpringCat::Filter::TextLineFilter";
+        const char * const TextLineFilter::Context::CONTEXT_NAME = "SpringCat::Filter::TextLineFilter::Context";
     }
 }
 

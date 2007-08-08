@@ -27,16 +27,36 @@ namespace SpringCat
         class AutoRecvFilter : public Common::IFilter
         {
         private:
+            static const char * const FILTER_NAME;
+
+        private:
             struct Context
             {
-                static const char * const filterName;
-                static const char * const contextName;
+                static const char * const CONTEXT_NAME;
             };
+
+        private:
+            size_t recvBufferSize_;
+            size_t recvPendingCount_;
 
         public:
             AutoRecvFilter(void)
-                : Common::IFilter(Context::filterName)
+                : Common::IFilter(FILTER_NAME),
+                recvBufferSize_(1024), recvPendingCount_(1)
             {}
+            AutoRecvFilter(size_t recvBufferSize, size_t recvPendingCount)
+                : Common::IFilter(FILTER_NAME),
+                recvBufferSize_(recvBufferSize), recvPendingCount_(recvPendingCount)
+            {
+                if (recvBufferSize_ == 0)
+                {
+                    throw std::exception();
+                }
+                if (recvPendingCount_ == 0)
+                {
+                    throw std::exception();
+                }
+            }
             virtual ~AutoRecvFilter(void)
             {}
 
@@ -44,8 +64,10 @@ namespace SpringCat
             virtual void OnOpened(BaseCat::Network::Filter::Handle next,
                 BaseCat::Network::Link::Handle link)
             {
-                BaseCat::Network::Link::Recv(link, 1024);
-                BaseCat::Network::Link::Recv(link, 1024);
+                for (size_t i = 0; i != recvPendingCount_; ++i)
+                {
+                    BaseCat::Network::Link::Recv(link, recvBufferSize_);
+                }
 
                 BaseCat::Network::Filter::DoOnLinkOpened(next, link);
             }
@@ -64,14 +86,14 @@ namespace SpringCat
                 BaseCat::Network::Link::Handle link,
                 BaseCat::System::SmartHeap::Block buffer, size_t size)
             {
-                BaseCat::Network::Link::Recv(link, 1024);
+                BaseCat::Network::Link::Recv(link, recvBufferSize_);
 
                 BaseCat::Network::Filter::DoOnReceived(next, link, buffer, size);
             }
         };
 
-        const char * const AutoRecvFilter::Context::filterName = "AutoRecvFilter";
-        const char * const AutoRecvFilter::Context::contextName = "AutoRecvFilterContext";
+        const char * const AutoRecvFilter::FILTER_NAME = "SpringCat::Filter::AutoRecvFilter";
+        const char * const AutoRecvFilter::Context::CONTEXT_NAME = "SpringCat::Filter::AutoRecvFilter::Context";
     }
 }
 

@@ -184,6 +184,10 @@
 					>
 				</File>
 				<File
+					RelativePath=".\include\Common\Exceptions.h"
+					>
+				</File>
+				<File
 					RelativePath=".\include\Common\Filter.h"
 					>
 				</File>

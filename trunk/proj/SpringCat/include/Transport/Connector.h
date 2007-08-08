@@ -81,20 +81,25 @@ namespace SpringCat
 
             bool Connect(const char *ipAddress, unsigned short port)
             {
-                return BaseCat::Network::Connector::Connect(GetHandle(), ipAddress, port);
+                return BaseCat::Network::Connector::Connect(GetHandle(),
+                    ipAddress, port);
             }
             bool Connect(const char *ipAddress, unsigned short port, int timeout)
             {
-                return BaseCat::Network::Connector::Connect(GetHandle(), ipAddress, port, timeout);
+                return BaseCat::Network::Connector::Connect(GetHandle(),
+                    ipAddress, port, timeout);
             }
 
             bool ConnectEx(const char *ipAddress, unsigned short port, void *context)
             {
-                return BaseCat::Network::Connector::ConnectEx(GetHandle(), ipAddress, port, context);
+                return BaseCat::Network::Connector::ConnectEx(GetHandle(),
+                    ipAddress, port, context);
             }
-            bool ConnectEx(const char *ipAddress, unsigned short port, int timeout, void *context)
+            bool ConnectEx(const char *ipAddress, unsigned short port,
+                int timeout, void *context)
             {
-                return BaseCat::Network::Connector::ConnectEx(GetHandle(), ipAddress, port, timeout, context);
+                return BaseCat::Network::Connector::ConnectEx(GetHandle(),
+                    ipAddress, port, timeout, context);
             }
 
             //ActiveLinkList::Handle LockActiveLinks(void);

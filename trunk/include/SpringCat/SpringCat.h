@@ -20,6 +20,7 @@
 
 // Common
 #include "Common/Config.h"
+#include "Common/Exceptions.h"
 #include "Common/SmallObject.h"
 #include "Common/Filter.h"
 #include "Common/FilterChain.h"

@@ -28,61 +28,133 @@ namespace SpringCat
         class ExecutorFilter : public Common::IFilter
         {
         private:
+            static const char * const FILTER_NAME;
+
+        private:
             class IEventRunnable : public Common::SmallObject<IEventRunnable>
             {
+            private:
+                __uint64 seq_;
+
             public:
+                IEventRunnable(__uint64 seq)
+                    : seq_(seq)
+                {}
                 virtual ~IEventRunnable(void) {}
 
-                virtual void Process(void) = 0;
+                __uint64 GetSeq(void) const
+                {
+                    return seq_;
+                }
+
+                virtual bool Process(void) = 0;
             };
+
+            typedef BaseCat::System::TL::deque<IEventRunnable *> EventQueue;
 
             struct Context : public Common::SmallObject<Context>
             {
             public:
-                static const char * const filterName;
-                static const char * const contextName;
+                static const char * const CONTEXT_NAME;
 
             private:
-                typedef BaseCat::System::TL::queue<IEventRunnable *> Queue;
-
-            private:
-                Queue queue_;
-                BaseCat::System::Threading::CriticalSection lock_;
+                __uint64 currentSeq_;
+                __uint64 processedSeq_;
+                bool locked_;
+                EventQueue queue_;
+                mutable BaseCat::System::Threading::CriticalSection lock_;
 
             public:
                 Context(void)
+                    : currentSeq_(0), processedSeq_(0), locked_(false)
                 {}
                 ~Context(void)
                 {}
 
-                void Lock(void)
+                bool TryLock(void)
                 {
-                    lock_.Lock();
+                    BaseCat::System::Threading::ScopedLock<
+                        BaseCat::System::Threading::CriticalSection> lock(lock_);
+
+                    if (locked_ == true)
+                    {
+                        return false;
+                    }
+
+                    locked_ = true;
+
+                    return true;
                 }
                 void Unlock(void)
                 {
-                    lock_.Unlock();
+                    BaseCat::System::Threading::ScopedLock<
+                        BaseCat::System::Threading::CriticalSection> lock(lock_);
+
+                    locked_ = false;
                 }
 
-                void PushEvent(IEventRunnable *event)
+                __uint64 GetSeq(void)
                 {
-                    BaseCat::System::Threading::ScopedLock<Context> lock(this);
-                    queue_.push(event);
-                }
-                IEventRunnable *GetEvent(void)
-                {
-                    IEventRunnable *result = NULL;
+                    BaseCat::System::Threading::ScopedLock<
+                        BaseCat::System::Threading::CriticalSection> lock(lock_);
 
+                    return currentSeq_++;
+                }
+
+                bool PushEvent(IEventRunnable *event)
+                {
+                    BaseCat::System::Threading::ScopedLock<
+                        BaseCat::System::Threading::CriticalSection> lock(lock_);
+
+                    queue_.push_back(event);
+
+                    if (locked_ == true)
                     {
-                        BaseCat::System::Threading::ScopedLock<Context> lock(this);
+                        return false;
+                    }
+
+                    return true;
+                }
+                bool GetEvents(EventQueue &result)
+                {
+                    BaseCat::System::Threading::ScopedLock<
+                        BaseCat::System::Threading::CriticalSection> lock(lock_);
+
+                    if (locked_ == false)
+                    {
+                        return false;
+                    }
+
+#pragma warning(disable:4127)
+                    while (true)
+#pragma warning(default:4127)
+                    {
                         if (queue_.empty() == false)
                         {
-                            result = queue_.front();
-                            queue_.pop();
+                            IEventRunnable *item = queue_.front();
+                            if (item->GetSeq() == processedSeq_)
+                            {
+                                ++processedSeq_;
+                                result.push_back(item);
+                                queue_.pop_front();
+                            }
+                            else
+                            {
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            break;
                         }
                     }
 
-                    return result;
+                    if (result.empty() == true)
+                    {
+                        locked_ = false;
+                    }
+
+                    return (result.empty() == false);
                 }
             };
 
@@ -91,7 +163,7 @@ namespace SpringCat
 
         public:
             ExecutorFilter(Common::ThreadPool *threadPool)
-                : Common::IFilter(Context::filterName), threadPool_(threadPool)
+                : Common::IFilter(FILTER_NAME), threadPool_(threadPool)
             {}
             ~ExecutorFilter(void)
             {}
@@ -100,133 +172,159 @@ namespace SpringCat
             virtual void OnOpened(BaseCat::Network::Filter::Handle next,
                 BaseCat::Network::Link::Handle link)
             {
+                using namespace BaseCat;
+
                 class DoOnOpened : public IEventRunnable
                 {
                 private:
-                    BaseCat::Network::Filter::Handle next_;
-                    BaseCat::Network::Link::Handle link_;
+                    Network::Filter::Handle next_;
+                    Network::Link::Handle link_;
 
                 public:
-                    DoOnOpened(BaseCat::Network::Filter::Handle next, BaseCat::Network::Link::Handle link)
-                        : next_(next), link_(link)
+                    DoOnOpened(__uint64 seq,
+                        Network::Filter::Handle next, Network::Link::Handle link)
+                        : IEventRunnable(seq), next_(next), link_(link)
                     {
-                        BaseCat::Network::Link::AddRef(link_);
+                        Network::Link::AddRef(link_);
                     }
                     virtual ~DoOnOpened(void)
                     {
-                        BaseCat::Network::Link::Release(link_);
+                        Network::Link::Release(link_);
                     }
 
-                    virtual void Process(void)
+                    virtual bool Process(void)
                     {
-                        BaseCat::Network::Filter::DoOnLinkOpened(next_, link_);
+                        Network::Filter::DoOnLinkOpened(next_, link_);
+
+                        return true;
                     }
                 };
 
                 Context *context = new Context;
-                BaseCat::Network::Link::AddAttribute(link, Context::contextName, context);
-                QueueFilterEvent(context, new DoOnOpened(next, link));
+                Network::Link::AddAttribute(link, Context::CONTEXT_NAME, context);
+                QueueFilterEvent(context, new DoOnOpened(context->GetSeq(), next, link));
             }
             virtual void OnClosed(BaseCat::Network::Filter::Handle next,
                 BaseCat::Network::Link::Handle link)
             {
+                using namespace BaseCat;
+
                 class DoOnClosed : public IEventRunnable
                 {
                 private:
-                    BaseCat::Network::Filter::Handle next_;
-                    BaseCat::Network::Link::Handle link_;
+                    Network::Filter::Handle next_;
+                    Network::Link::Handle link_;
 
                 public:
-                    DoOnClosed(BaseCat::Network::Filter::Handle next, BaseCat::Network::Link::Handle link)
-                        : next_(next), link_(link)
+                    DoOnClosed(__uint64 seq,
+                        Network::Filter::Handle next, Network::Link::Handle link)
+                        : IEventRunnable(seq), next_(next), link_(link)
                     {
-                        BaseCat::Network::Link::AddRef(link_);
+                        Network::Link::AddRef(link_);
                     }
                     virtual ~DoOnClosed(void)
                     {
-                        Context *context = static_cast<Context *>(BaseCat::Network::Link::GetAttribute(link_, Context::contextName));
-                        BaseCat::Network::Link::RemoveAttribute(link_, Context::contextName);
+                        Context *context = static_cast<Context *>(
+                            Network::Link::GetAttribute(link_, Context::CONTEXT_NAME));
+                        Network::Link::RemoveAttribute(link_, Context::CONTEXT_NAME);
                         delete context;
 
-                        BaseCat::Network::Link::Release(link_);
+                        Network::Link::Release(link_);
                     }
 
-                    virtual void Process(void)
+                    virtual bool Process(void)
                     {
-                        BaseCat::Network::Filter::DoOnLinkClosed(next_, link_);
+                        Network::Filter::DoOnLinkClosed(next_, link_);
+
+                        return false;
                     }
                 };
 
-                Context *context = static_cast<Context *>(BaseCat::Network::Link::GetAttribute(link, Context::contextName));
-                QueueFilterEvent(context, new DoOnClosed(next, link));
+                Context *context = static_cast<Context *>(
+                    Network::Link::GetAttribute(link, Context::CONTEXT_NAME));
+                QueueFilterEvent(context, new DoOnClosed(context->GetSeq(), next, link));
             }
             virtual void OnSend(BaseCat::Network::Filter::Handle next,
                 BaseCat::Network::Link::Handle link,
                 BaseCat::System::SmartHeap::Block buffer, size_t size)
             {
+                using namespace BaseCat;
+
                 class DoOnSend : public IEventRunnable
                 {
                 private:
-                    BaseCat::Network::Filter::Handle next_;
-                    BaseCat::Network::Link::Handle link_;
-                    BaseCat::System::SmartHeap::Block buffer_;
+                    Network::Filter::Handle next_;
+                    Network::Link::Handle link_;
+                    System::SmartHeap::Block buffer_;
                     size_t size_;
 
                 public:
-                    DoOnSend(BaseCat::Network::Filter::Handle next,
-                        BaseCat::Network::Link::Handle link,
-                        BaseCat::System::SmartHeap::Block buffer, size_t size)
-                        : next_(next), link_(link), buffer_(buffer), size_(size)
+                    DoOnSend(__uint64 seq,
+                        Network::Filter::Handle next, Network::Link::Handle link,
+                        System::SmartHeap::Block buffer, size_t size)
+                        : IEventRunnable(seq), next_(next),
+                        link_(link), buffer_(buffer), size_(size)
                     {
-                        BaseCat::Network::Link::AddRef(link_);
+                        Network::Link::AddRef(link_);
                     }
                     virtual ~DoOnSend(void)
                     {
-                        BaseCat::Network::Link::Release(link_);
+                        Network::Link::Release(link_);
                     }
 
-                    virtual void Process(void)
+                    virtual bool Process(void)
                     {
-                        BaseCat::Network::Filter::DoOnSend(next_, link_, buffer_, size_);
+                        Network::Filter::DoOnSend(next_, link_, buffer_, size_);
+
+                        return true;
                     }
                 };
 
-                Context *context = static_cast<Context *>(BaseCat::Network::Link::GetAttribute(link, Context::contextName));
-                QueueFilterEvent(context, new DoOnSend(next, link, buffer, size));
+                Context *context = static_cast<Context *>(
+                    Network::Link::GetAttribute(link, Context::CONTEXT_NAME));
+                QueueFilterEvent(context, new DoOnSend(context->GetSeq(),
+                                                    next, link, buffer, size));
             }
             virtual void OnReceived(BaseCat::Network::Filter::Handle next,
                 BaseCat::Network::Link::Handle link,
                 BaseCat::System::SmartHeap::Block buffer, size_t size)
             {
+                using namespace BaseCat;
+
                 class DoOnReceived : public IEventRunnable
                 {
                 private:
-                    BaseCat::Network::Filter::Handle next_;
-                    BaseCat::Network::Link::Handle link_;
-                    BaseCat::System::SmartHeap::Block buffer_;
+                    Network::Filter::Handle next_;
+                    Network::Link::Handle link_;
+                    System::SmartHeap::Block buffer_;
                     size_t size_;
 
                 public:
-                    DoOnReceived(BaseCat::Network::Filter::Handle next,
-                        BaseCat::Network::Link::Handle link,
-                        BaseCat::System::SmartHeap::Block buffer, size_t size)
-                        : next_(next), link_(link), buffer_(buffer), size_(size)
+                    DoOnReceived(__uint64 seq,
+                        Network::Filter::Handle next, Network::Link::Handle link,
+                        System::SmartHeap::Block buffer, size_t size)
+                        : IEventRunnable(seq), next_(next),
+                        link_(link), buffer_(buffer), size_(size)
                     {
-                        BaseCat::Network::Link::AddRef(link_);
+                        Network::Link::AddRef(link_);
                     }
                     virtual ~DoOnReceived(void)
                     {
-                        BaseCat::Network::Link::Release(link_);
+                        Network::Link::Release(link_);
                     }
 
-                    virtual void Process(void)
+                    virtual bool Process(void)
                     {
-                        BaseCat::Network::Filter::DoOnReceived(next_, link_, buffer_, size_);
+                        Network::Filter::DoOnReceived(next_, link_, buffer_, size_);
+
+                        return true;
                     }
                 };
 
-                Context *context = static_cast<Context *>(BaseCat::Network::Link::GetAttribute(link, Context::contextName));
-                QueueFilterEvent(context, new DoOnReceived(next, link, buffer, size));
+                Context *context = static_cast<Context *>(
+                    Network::Link::GetAttribute(link, Context::CONTEXT_NAME));
+                QueueFilterEvent(context, new DoOnReceived(context->GetSeq(),
+                                                    next, link, buffer, size));
             }
 
         private:
@@ -243,17 +341,45 @@ namespace SpringCat
                 }
 
                 Context *context = static_cast<Context *>(data);
+                if (context->TryLock() == false)
+                {
+                    return 0;
+                }
 
-                IEventRunnable *item = context->GetEvent();
-                item->Process();
-                delete item;
+                bool exit = false;
+                while (exit == false)
+                {
+                    EventQueue items;
+                    if (context->GetEvents(items) == false)
+                    {
+                        break;
+                    }
+
+                    for (EventQueue::iterator it = items.begin();
+                        it != items.end(); ++it)
+                    {
+                        IEventRunnable *item = *it;
+                        if (item->Process() == false)
+                        {
+                            context->Unlock();
+                            exit = true;
+                        }
+                        delete item;
+
+                        if (exit == true)
+                        {
+                            break;
+                        }
+                    }
+                    items.clear();
+                }
 
                 return 0;
             }
         };
 
-        const char * const ExecutorFilter::Context::filterName = "ExecutorFilter";
-        const char * const ExecutorFilter::Context::contextName = "ExecutorFilterContext";
+        const char * const ExecutorFilter::FILTER_NAME = "SpringCat::Filter::ExecutorFilter";
+        const char * const ExecutorFilter::Context::CONTEXT_NAME = "SpringCat::Filter::ExecutorFilter::Context";
     }
 }
 

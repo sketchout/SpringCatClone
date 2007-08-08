@@ -27,7 +27,7 @@ namespace SpringCat
             static const char * const VERSION = "SpringCat 0.1";
             static const char * const RELEASE = "SpringCat 0.1.1";
             static const char * const COPYRIGHT = "Copyright (C) 2007 Bluecat Studio. All rights reserved.";
-            static const char * const AUTHORS = "Designed and implemented by Jae-Pil Jeong.";
+            static const char * const AUTHORS = "Designed and implemented by Jaepil Jeong.";
         }
     }
 }
